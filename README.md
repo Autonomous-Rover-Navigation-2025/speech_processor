@@ -1,4 +1,4 @@
-# 🗣️ ROS2 Package: `speech_processor`
+# ROS2 Package: `speech_processor`
 
 Voice interface for the **Autonomous Rover Navigation** project.  
 It lets the rover **listen** using speech-to-text and **speak** using text-to-speech.  
@@ -6,7 +6,7 @@ Built on ROS2, Whisper ASR, and Piper TTS.
 
 ---
 
-### 🎧 Speech Pipeline
+### Speech Pipeline
 
 "Hey Jarvis" → [wake_audio_processor] → /speech_text → /speech_reply → [tts_publisher] → Spoken Response            
 
