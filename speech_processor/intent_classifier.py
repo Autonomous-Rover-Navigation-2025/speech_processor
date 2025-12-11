@@ -25,11 +25,12 @@ class IntentClassifierNode(Node):
 
         self.subscription = self.create_subscription(
             String,
-            '/asr_output',
+            '/speech_text',
             self.listener_callback,
             10
         )
         self.escort_pub = self.create_publisher(String, '/escort_command', 10)
+        self.llm_pub = self.create_publisher(String, '/llm_prompt', 10)
 
         self.get_logger().info("Intent classifier node is running")
 
@@ -47,6 +48,16 @@ class IntentClassifierNode(Node):
         if intent.lower() == "escort":
             self.escort_pub.publish(String(data=text))
             self.get_logger().info(f"Sent to /escort_command: '{text}'")
+        elif intent.lower() == "smalltalk":
+            self.llm_pub.publish(String(
+                data=f"You are a freindly UCI Campus escort rover. Respond to this:{text}. Only send the response. Respond in one sentance. End with ZOT ZOT."
+                ))
+            self.get_logger().info(f"Sent to /llm_prompt: '{text}'")
+        elif intent.lower() == "stop":
+            self.llm_pub.publish(String(
+                data=f"You are a freindly UCI Campus escort rover. The student wants to stop the current navigation. Respond to this:{text}. Only send the response. Respond in one sentance. End with ZOT ZOT."
+                ))
+            self.get_logger().info(f"Sent to /llm_prompt: '{text}'")
 
 def main(args=None):
     rclpy.init(args=args)

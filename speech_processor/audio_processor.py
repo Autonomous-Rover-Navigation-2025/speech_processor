@@ -1,8 +1,11 @@
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import String
 import pyaudio
 import speech_recognition as sr
-import riva.client
+import time
+import wave
+import os
 
 
 class AudioProcessor(Node):
@@ -10,94 +13,173 @@ class AudioProcessor(Node):
         super().__init__('audio_processor')
         self.get_logger().info('🎙️ Audio Processor Node Started')
 
-        # Audio config
+        # ===== Audio Config =====
         self.CHUNK = 1024
         self.RATE = 44100
         self.CHANNELS = 1
         self.FORMAT = pyaudio.paInt16
         self.RECORD_SECONDS = 5
         self.input_device_index = 0
-        self.record_stream = None
+        self.RECORD_INTERVAL = 5.0  # seconds between each recording cycle
 
+        # ===== Global filename for saving audio =====
+        self.output_filename = "audio_processor.wav"  # ✅ defined globally for use across methods
+
+        # ===== Initialize Audio and Recognizer =====
         self.audio_interface = pyaudio.PyAudio()
-
-        # Timer to record every 5 seconds
-        self.timer = self.create_timer(5.0, self.record_and_transcribe)
-        self.get_logger().info("🎙️ Recording will starts in 5 Secs...")
-
-        # Speech recognizer instance
         self.recognizer = sr.Recognizer()
-        # Authenticate and create Riva ASR client
 
-        self.riva_auth = riva.client.Auth(uri="localhost:50051")  # adjust if remote
-        self.riva_asr = riva.client.ASRService(self.riva_auth)
+        # ===== ROS 2 Publisher =====
+        self.publisher_ = self.create_publisher(String, '/speech_text', 10)
 
-    def record_and_transcribe(self):
-        self.get_logger().info("🎙️ Recording started... You Can speak Now, it will be take only first 5 Secs of talk  as an input for processing")
+        self.get_logger().info("✅ Initialization completed. Waiting to record...")
 
-        record_stream = self.audio_interface.open(format=self.FORMAT,
-                                           channels=self.CHANNELS,
-                                           rate=self.RATE,
-                                           input=True,
-                                           input_device_index=self.input_device_index,
-                                           frames_per_buffer=self.CHUNK)
+    # -----------------------------
+    #  AUDIO RECORDING FUNCTION
+    # -----------------------------
+    def record_audio(self):
+        """Record audio from the input device."""
+        self.get_logger().info("🎙️ Recording started... Speak now (5 sec)...")
+
+        stream = self.audio_interface.open(
+            format=self.FORMAT,
+            channels=self.CHANNELS,
+            rate=self.RATE,
+            input=True,
+            input_device_index=self.input_device_index,
+            frames_per_buffer=self.CHUNK
+        )
 
         frames = []
         for _ in range(0, int(self.RATE / self.CHUNK * self.RECORD_SECONDS)):
-            data = record_stream.read(self.CHUNK, exception_on_overflow=False)
+            data = stream.read(self.CHUNK, exception_on_overflow=False)
             frames.append(data)
 
-        record_stream.stop_stream()
-        record_stream.close()
+        stream.stop_stream()
+        stream.close()
         self.get_logger().info("✅ Recording finished.")
+        return b"".join(frames)
 
-        # Combine frames
-        audio_bytes = b''.join(frames)
-        # Wrap raw data in AudioData: (frame_data, sample_rate, sample_width)
-        audio_data = sr.AudioData(audio_bytes, self.RATE, 2)  # 2 bytes per sample for paInt16
-        self.get_logger().info("Processing your audio speech data")
+    # -----------------------------
+    #  SAVE TO WAV FILE FUNCTION
+    # -----------------------------
+    def save_audio_to_file(self, audio_bytes):
+        """Save recorded audio bytes to a WAV file."""
+        with wave.open(self.output_filename, 'wb') as wf:
+            wf.setnchannels(self.CHANNELS)
+            wf.setsampwidth(self.audio_interface.get_sample_size(self.FORMAT))
+            wf.setframerate(self.RATE)
+            wf.writeframes(audio_bytes)
+        self.get_logger().info(f"💾 Audio saved to {self.output_filename}")
+
+    # -----------------------------
+    #  GOOGLE SPEECH RECOGNITION FUNCTION
+    # -----------------------------
+    def recognize_speech(self):
+        """Transcribe speech from the recorded WAV file."""
+        if not os.path.exists(self.output_filename):
+            self.get_logger().error(f"🚫 Audio file not found: {self.output_filename}")
+            return None
+
+        recognizer = sr.Recognizer()
+        self.get_logger().info("🔄 Starting transcription using Google Speech Recognition...")
+
+        with sr.AudioFile(self.output_filename) as source:
+            audio_data = recognizer.record(source)
 
         try:
-            # text = self.recognizer.recognize_google(audio_data)
-            # self.get_logger().info(f'🗣️ You said: "{text}"')
+            text = recognizer.recognize_google(audio_data, language="en-US")
+            self.get_logger().info(f'🗣️ You said: "{text}"')
+            return text.lower()
 
-            response = self.riva_asr.offline_recognize(
-                audio_bytes,
-                sample_rate_hz=self.RATE,
-                language_code="en-US"
-            )
+        except sr.UnknownValueError:
+            self.get_logger().warn("🤔 Could not understand the audio.")
+            return None
+        except sr.RequestError as e:
+            self.get_logger().error(f"🚫 Google Speech Recognition API error: {e}")
+            return None
 
-            text = response[0].transcript if response else ""
-            if text:
-                self.get_logger().info(f'🗣️ Riva STT: "{text}"')  
+    # -----------------------------
+    #  PUBLISHING FUNCTION
+    # -----------------------------
+    def publish_transcription(self, text):
+        """Publish the recognized text to the /speech_text topic."""
+        if not text:
+            self.get_logger().warn("⚠️ Empty text, not publishing.")
+            return
 
-              # Convert to lowercase for case-insensitive match
-            if "hey rover" in text.lower():
-                self.get_logger().warn("🟢 Wake word 'hey rover' detected! Performing action...")
+        msg = String()
+        msg.data = text
+        self.publisher_.publish(msg)
+        self.get_logger().info(f"📤 Published to /speech_text: '{text}'")
 
-        # except sr.UnknownValueError:
-        #     self.get_logger().info("🤔 Could not understand audio.")
-        # except sr.RequestError as e:
-        #     self.get_logger().error(f"🚫 Google API error: {e}")
-        except Exception as e:
-            self.get_logger().error(f"🚫 Riva STT error: {e}")
+    # -----------------------------
+    #  PROCESSING FUNCTION
+    # -----------------------------
+    def process_transcription(self, text):
+        """Process recognized text (detect commands, wake word, etc.)."""
+        self.get_logger().info("🧠 Entered process_transcription() function")
 
-    def destroy_node(self):
+        if not text:
+            self.get_logger().warn("⚠️ No transcription text received. Skipping processing.")
+            return
+
+        self.get_logger().info(f"📝 Received transcription: '{text}'")
+        self.get_logger().debug(f"📏 Text length: {len(text)} characters")
+
+        self.get_logger().info("📡 Publishing recognized text to /speech_text topic...")
+        self.publish_transcription(text)
+        self.get_logger().debug("✅ Text successfully published.")
+
+        if "hey rover" in text.lower():
+            self.get_logger().warn("🟢 Wake word 'hey rover' detected! Performing action...")
+
+    # -----------------------------
+    #  MAIN LOOP FUNCTION
+    # -----------------------------
+    def run(self):
+        """Main recording-transcription loop."""
+        try:
+            while rclpy.ok():
+                self.get_logger().info(f"⏳ Waiting {self.RECORD_INTERVAL} sec before next capture...")
+                time.sleep(self.RECORD_INTERVAL)
+
+                # 1️⃣ Record
+                audio_data = self.record_audio()
+
+                # 2️⃣ Save
+                self.save_audio_to_file(audio_data)
+
+                # 3️⃣ Recognize
+                text = self.recognize_speech()
+
+                # 4️⃣ Process + Publish
+                self.process_transcription(text)
+
+        except KeyboardInterrupt:
+            self.get_logger().info("🛑 KeyboardInterrupt received. Stopping node.")
+        finally:
+            self.cleanup()
+
+    # -----------------------------
+    #  CLEANUP FUNCTION
+    # -----------------------------
+    def cleanup(self):
+        """Release audio resources."""
         self.audio_interface.terminate()
-        print("🔚 Audio resources (audio_interface) released.")
-        super().destroy_node()
+        self.get_logger().info("🔚 Audio resources released.")
+        self.destroy_node()
 
+
+# ========================================================
+#  MAIN ENTRY POINT
+# ========================================================
 def main(args=None):
     rclpy.init(args=args)
     node = AudioProcessor()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt received. Shutting down the audio_processor ...")
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+    node.run()
+    rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

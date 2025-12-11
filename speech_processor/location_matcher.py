@@ -3,21 +3,22 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from sentence_transformers import SentenceTransformer, util
+import time
 
 # Define your known UCI locations
 UCI_LOCATIONS = [
-    "library", "cafeteria", "admin building", "engineering lab", "student center", "gym", "classroom",
-    "computer science department", "ARC", "dorm", "aldrich park", "lecture hall", "main entrance",
-    "art gallery", "science library", "north park", "engineering tower", "next class", "robotics lab",
-    "chemistry class", "front gate", "parkview building", "restroom", "multipurpose building",
-    "administration", "university center", "south wing", "physics department", "research lab",
-    "medical center", "verano place", "faculty office", "student union", "west entrance",
-    "reception", "Palo Verde", "social science trailer", "innovation hub", "ICS", "project room",
-    "engineering gateway", "alumni center", "registrar's office", "student health center", "middle earth",
-    "mesa court", "infrastructure office", "brandywine", "bookstore", "bus stop", "science quad",
-    "anteater plaza", "science hall", "info center", "bren events center", "humanities hall", "vdc",
-    "cross cultural center", "tech repair", "financial aid office", "phoenix court", "DBH", "UTC", 
-    "donald bren hall", "university town center", "anteater hill"
+    "library", "chair", "Sofa","coffee machine", "table", "admin building", "engineering tower", "student center", "gym", "classroom",
+    # "computer science department", "ARC", "dorm", "aldrich park", "lecture hall", "main entrance",
+    # "art gallery", "science library", "north park", "engineering tower", "next class", "robotics lab",
+    # "chemistry class", "front gate", "parkview building", "restroom", "multipurpose building",
+    # "administration", "university center", "south wing", "physics department", "research lab",
+    # "medical center", "verano place", "faculty office", "student union",
+    # "reception", "Palo Verde", "social science trailer", "innovation hub", "ICS", "project room",
+    # "engineering gateway", "alumni center", "registrar's office", "student health center", "middle earth",
+    # "mesa court", "infrastructure office", "brandywine", "bookstore", "bus stop", "science quad",
+    # "anteater plaza", "science hall", "info center", "bren events center", "humanities hall", "vdc",
+    # "cross cultural center", "tech repair", "financial aid office", "phoenix court", "DBH", "UTC", 
+    # "donald bren hall", "university town center", "anteater hill"
 ]
 
 class LocationMatcherNode(Node):
@@ -36,6 +37,7 @@ class LocationMatcherNode(Node):
             self.command_callback,
             10
         )
+        self.pub_tts = self.create_publisher(String, '/speak_text', 10)
         self.publisher = self.create_publisher(String, 'matched_location', 10)
 
         self.get_logger().info("LocationMatcherNode is ready.")
@@ -51,7 +53,9 @@ class LocationMatcherNode(Node):
         matched_location = self.location_names[best_match_index]
 
         self.get_logger().info(f"Matched location: {matched_location}")
+       #time.sleep(5)
         self.publisher.publish(String(data=matched_location))
+        self.pub_tts.publish(String(data=f"Taking you to {matched_location}. ZOT ZOT."))
 
 def main(args=None):
     rclpy.init(args=args)
