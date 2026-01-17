@@ -1,92 +1,123 @@
-ROS2 Package: speech_processor
+# ROS 2 Package: `speech_processor`
 
-Voice interface for the Autonomous Rover Navigation project.
-This package enables the rover to listen, understand intent, and respond verbally as part of a voice-driven autonomy system.
+**Voice interface for the Autonomous Rover Navigation**
 
-speech_processor is responsible for speech input and output in ROS 2. It bridges human voice interaction with downstream systems such as intent classification, navigation (Nav2), and dialogue via an LLM.
+`speech_processor` provides the speech input and output layer for a voice-driven autonomous rover. It allows the rover to listen for spoken commands, understand intent, and respond verbally, while cleanly interfacing with downstream systems such as navigation (Nav2) and conversational dialogue via a local LLM.
 
-Overview
+---
 
-The voice system follows a layered pipeline:
+## Overview
 
-Input → Processing → Decision → Output
+The voice system follows a layered pipeline: Input → Processing → Decision → Output
 
 Spoken commands are captured from a microphone, converted to text, routed based on intent (conversation vs navigation), and answered using synthesized speech.
 
-Voice Interaction Flow
+---
 
-“Hey Jarvis” → wake_audio_processor → Speech-to-Text → Intent Classification
-→ Small Talk → LLM (Ollama)
-→ Navigation → Location Matcher / Nav2
-→ /speech_reply → tts_publisher → Spoken Response
+## Architecture
 
-Input Layer
-Wake Word Detection and Audio Capture
+### Input Layer  
+**Wake Word Detection & Audio Capture**
 
-Node: wake_audio_processor
-Libraries: PyAudio, OpenWakeWord
+**Node:** `wake_audio_processor`  
+**Libraries:** PyAudio, OpenWakeWord  
 
-The system runs in a continuous listening loop, waiting for the wake word “Hey Jarvis.”
-When the wake word is detected, the node captures a short audio segment from the microphone and forwards it for transcription.
+- Runs in a continuous listening loop.
+- Waits for the wake word **“Hey Jarvis.”**
+- Upon detection, captures a short audio segment from the microphone.
+- Automatically cycles between:
+  - **Idle (wake)** state
+  - **Active (listen)** state  
 
-The node automatically cycles between idle (wake) and active (listen) states, keeping the system responsive while minimizing unnecessary processing.
+This design keeps the system responsive while minimizing unnecessary processing.
 
-Processing Layer
-Speech-to-Text (STT)
+---
 
-Captured audio is converted into text using an ASR engine (local Whisper or Google ASR depending on deployment).
-The final transcription is published to the ROS topic:
+### Processing Layer
 
-/speech_text
+#### Speech-to-Text (STT)
+
+- Captured audio is converted into text using an ASR engine:
+  - Google ASR
+- The final transcription is published to: /speech_text
 
 This enables hands-free voice control of the rover.
 
-Intent Classification
+---
 
-The transcribed text is analyzed to determine the user’s intent.
-A lightweight transformer model (e.g. DistilBERT) classifies the input as either:
+#### Intent Classification
 
-Conversational / Small Talk
+- Transcribed text is analyzed to determine user intent.
+- A lightweight transformer model (e.g. **DistilBERT**) classifies input as:
+  - **Conversational / Small Talk**
+  - **Navigation / Command**
 
-Navigation / Command
+This separation ensures time-critical navigation logic is handled independently from conversational dialogue.
 
-This separation ensures that time-critical navigation logic is handled independently from conversational dialogue.
+---
 
-Decision and Communication Layer
-Conversational Interaction (Small Talk)
+## Decision & Communication Layer
 
-Non-navigation queries are routed to a local LLM running via Ollama.
-The LLM handles greetings, status questions, and general dialogue, then produces a text response for the rover to speak.
+### Conversational Interaction (Small Talk)
 
-Navigation Commands
+- Non-navigation queries are routed to a local LLM via **Ollama**.
+- The LLM handles:
+  - Greetings
+  - Status questions
+  - General dialogue
+- Produces a text response for the rover to speak.
 
-Navigation-related commands are forwarded to the autonomy stack, including:
+---
 
-Location matching using Sentence-BERT embeddings
+### Navigation Commands
 
-Path planning and execution via Nav2
+- Navigation-related commands are forwarded to the autonomy stack:
+  - Location matching using **Sentence-BERT embeddings**
+  - Path planning and execution via **Nav2**
+- Generates short confirmation messages such as:
+  - “Heading to the Building.”
+  - “Destination reached.”
+- These messages are passed back for speech output.
 
-The system generates short confirmation messages such as “Heading to the garage” or “Destination reached,” which are passed back for speech output.
+---
 
-Output Layer
-Text-to-Speech (TTS)
+## Output Layer
 
-Node: tts_publisher
-Engine: Piper TTS 
+### Text-to-Speech (TTS)
 
-The tts_publisher node subscribes to the following topic:
+**Node:** `tts_publisher`  
+**Engine:** Piper TTS 
 
-/speech_reply
+- Subscribes to: /speech_reply
 
-When a message arrives, it is sent to a Piper TTS engine running inside a Docker container.
-The text is converted into natural-sounding speech, saved as an audio file, and immediately played through the Jetson’s speaker.
 
-ROS Topics
+- When a message arrives:
+  - Text is sent to a Piper TTS engine running in a Docker container.
+  - Speech is synthesized into an audio file.
+  - Audio is immediately played through the Jetson’s speaker.
 
-/speech_text
-Published by the speech-to-text pipeline. Contains the final transcription of user speech.
+Running Piper in a container isolates heavy dependencies while keeping speech generation fast and reliable.
 
-/speech_reply
-Subscribed by the text-to-speech pipeline. Contains the text the rover should speak aloud.
+---
 
-The rover doesn’t just hear commands—it knows when to chat, when to drive, and when to stay quiet.
+## ROS Topics
+
+### `/speech_text`
+- **Published by:** Speech-to-Text pipeline  
+- **Description:** Final transcription of user speech  
+
+### `/speech_reply`
+- **Subscribed by:** Text-to-Speech pipeline  
+- **Description:** Text the rover should speak aloud  
+
+---
+
+## Summary
+
+`speech_processor` provides a clean, modular voice interface for ROS 2.
+The rover doesn’t just hear commands — it knows when to chat, when to drive, and when to stay quiet.
+
+
+
+
+
